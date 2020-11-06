@@ -18,111 +18,35 @@ import (
 	"unsafe"
 )
 
-// cVecMatrix allocates a len(x) * dim contiguous matrix in C memory that is a
-// copy of x.
-func cVecMatrix(x [][]float32, dim int) *C.float {
-	cx := C.malloc(C.size_t(len(x)*dim) * C.sizeof_float)
-	gx := (*[1 << 30]C.float)(cx)
-
-	for i, vec := range x {
-		for j := 0; j < dim; j++ {
-			gx[dim*i+j] = C.float(vec[j])
-		}
-	}
-	return (*C.float)(cx)
-}
-
-// cIdxArray allocates an array of idx_t in C memory that is a copy of a.
-func cIdxArray(a []int) *C.idx_t {
-	ca := C.malloc(C.size_t(len(a)) * C.sizeof_idx_t)
-	ga := (*[1 << 30]C.idx_t)(ca)
-
-	for i, v := range a {
-		ga[i] = C.idx_t(v)
-	}
-	return (*C.idx_t)(ca)
-}
-
 func getLastError() error {
-	err := C.GoString(C.faiss_get_last_error())
-	return errors.New(err)
+	return errors.New(C.GoString(C.faiss_get_last_error()))
 }
 
-func indexAdd(idx *C.FaissIndex, x [][]float32) error {
-	cx := cVecMatrix(x, int(C.faiss_Index_d(idx)))
-	defer C.free(unsafe.Pointer(cx))
+//--------------------------------------------------
+// AuxIndexStructures
+//--------------------------------------------------
 
-	c := C.faiss_Index_add(idx, C.idx_t(len(x)), cx)
-	if c != 0 {
-		return getLastError()
-	}
-	return nil
+// IDSelector represents a set of IDs to remove.
+type IDSelector struct {
+	sel *C.FaissIDSelector
 }
 
-func indexAddWithIDs(idx *C.FaissIndex, x [][]float32, ids []int) error {
-	cx := cVecMatrix(x, int(C.faiss_Index_d(idx)))
-	defer C.free(unsafe.Pointer(cx))
-	ci := cIdxArray(ids)
-	defer C.free(unsafe.Pointer(ci))
-
-	c := C.faiss_Index_add_with_ids(idx, C.idx_t(len(x)), cx, ci)
-	if c != 0 {
-		return getLastError()
-	}
-	return nil
-}
-
-func indexSearch(idx *C.FaissIndex, x [][]float32, k int) (
-	dist [][]float32, labels [][]int, err error,
-) {
-	cx := cVecMatrix(x, int(C.faiss_Index_d(idx)))
-	defer C.free(unsafe.Pointer(cx))
-
-	cl := (*C.idx_t)(C.malloc(C.size_t(len(x)*k) * C.sizeof_idx_t))
-	defer C.free(unsafe.Pointer(cl))
-	cd := (*C.float)(C.malloc(C.size_t(len(x)*k) * C.sizeof_float))
-	defer C.free(unsafe.Pointer(cd))
-
-	c := C.faiss_Index_search(idx, C.idx_t(len(x)), cx, C.idx_t(k), cd, cl)
-	if c != 0 {
-		return nil, nil, getLastError()
-	}
-
-	gl := (*[1 << 30]C.idx_t)(unsafe.Pointer(cl))
-	gd := (*[1 << 30]C.float)(unsafe.Pointer(cd))
-
-	for i := 0; i < len(x); i++ {
-		lrow := make([]int, k)
-		drow := make([]float32, k)
-
-		for j := 0; j < k; j++ {
-			cidx := k*i + j
-			lrow[j] = int(gl[cidx])
-			drow[j] = float32(gd[cidx])
-		}
-		labels = append(labels, lrow)
-		dist = append(dist, drow)
-	}
-
-	return dist, labels, nil
-}
-
-func indexRemoveIDs(idx *C.FaissIndex, ids []int) (int, error) {
-	ci := cIdxArray(ids)
-	defer C.free(unsafe.Pointer(ci))
-
+// NewIDSelectorBatch creates a new batch selector.
+func NewIDSelectorBatch(indices []int64) (*IDSelector, error) {
 	var sel *C.FaissIDSelectorBatch
-	c := C.faiss_IDSelectorBatch_new(&sel, C.size_t(len(ids)), ci)
-	if c != 0 {
-		return 0, getLastError()
+	if c := C.faiss_IDSelectorBatch_new(
+		&sel,
+		C.size_t(len(indices)),
+		(*C.idx_t)(&indices[0]),
+	); c != 0 {
+		return nil, getLastError()
 	}
+	return &IDSelector{(*C.FaissIDSelector)(sel)}, nil
+}
 
-	var nRemoved C.size_t
-	c = C.faiss_Index_remove_ids(idx, (*C.FaissIDSelector)(sel), &nRemoved)
-	if c != 0 {
-		return 0, getLastError()
-	}
-	return int(nRemoved), nil
+// Delete frees the memory associated with s.
+func (s *IDSelector) Delete() {
+	C.faiss_IDSelector_free(s.sel)
 }
 
 //--------------------------------------------------
@@ -146,17 +70,65 @@ type Index struct {
 	idx *C.FaissIndex
 }
 
-// IndexFactory builds a composite index.
-// description is a comma-separated list of components.
-func IndexFactory(d int, description string, metric int) (*Index, error) {
-	cdesc := C.CString(description)
-	defer C.free(unsafe.Pointer(cdesc))
-	var index Index
-	c := C.faiss_index_factory(&index.idx, C.int(d), cdesc, C.FaissMetricType(metric))
-	if c != 0 {
-		return nil, getLastError()
+func indexD(idx *C.FaissIndex) int {
+	return int(C.faiss_Index_d(idx))
+}
+
+func indexAdd(idx *C.FaissIndex, x []float32) error {
+	n := len(x) / indexD(idx)
+	if c := C.faiss_Index_add(idx, C.idx_t(n), (*C.float)(&x[0])); c != 0 {
+		return getLastError()
 	}
-	return &index, nil
+	return nil
+}
+
+func indexAddWithIDs(idx *C.FaissIndex, x []float32, xids []int64) error {
+	n := len(x) / indexD(idx)
+	if c := C.faiss_Index_add_with_ids(
+		idx,
+		C.idx_t(n),
+		(*C.float)(&x[0]),
+		(*C.idx_t)(&xids[0]),
+	); c != 0 {
+		return getLastError()
+	}
+	return nil
+}
+
+func indexSearch(idx *C.FaissIndex, x []float32, k int) (
+	distances []float32, labels []int64, err error,
+) {
+	n := len(x) / indexD(idx)
+	distances = make([]float32, n*k)
+	labels = make([]int64, n*k)
+	if c := C.faiss_Index_search(
+		idx,
+		C.idx_t(n),
+		(*C.float)(&x[0]),
+		C.idx_t(k),
+		(*C.float)(&distances[0]),
+		(*C.idx_t)(&labels[0]),
+	); c != 0 {
+		err = getLastError()
+	}
+	return
+}
+
+func indexRemoveIDs(idx *C.FaissIndex, sel *C.FaissIDSelector) (int, error) {
+	var nRemoved C.size_t
+	if c := C.faiss_Index_remove_ids(idx, sel, &nRemoved); c != 0 {
+		return 0, getLastError()
+	}
+	return int(nRemoved), nil
+}
+
+func indexDelete(idx *C.FaissIndex) {
+	C.faiss_Index_free(idx)
+}
+
+// D returns the dimension of the indexed vectors.
+func (idx *Index) D() int {
+	return indexD(idx.idx)
 }
 
 // AsFlat casts idx to a flat index.
@@ -170,33 +142,50 @@ func (idx *Index) AsFlat() *IndexFlat {
 }
 
 // Add adds vectors to the index.
-func (idx *Index) Add(x [][]float32) error {
+func (idx *Index) Add(x []float32) error {
 	return indexAdd(idx.idx, x)
 }
 
-// AddWithIDs is like Add, but stores ids instead of sequential IDs.
-func (idx *Index) AddWithIDs(x [][]float32, ids []int) error {
-	return indexAddWithIDs(idx.idx, x, ids)
+// AddWithIDs is like Add, but stores xids instead of sequential IDs.
+func (idx *Index) AddWithIDs(x []float32, xids []int64) error {
+	return indexAddWithIDs(idx.idx, x, xids)
 }
 
 // Search queries the index with the vectors in x.
-// Returns the IDs of the k nearest neighbors for each query vector in labels
-// and the corresponding distances in dist.
-func (idx *Index) Search(x [][]float32, k int) (
-	dist [][]float32, labels [][]int, err error,
+// Returns the IDs of the k nearest neighbors for each query vector and the
+// corresponding distances.
+func (idx *Index) Search(x []float32, k int) (
+	distances []float32, labels []int64, err error,
 ) {
 	return indexSearch(idx.idx, x, k)
 }
 
-// RemoveIDs removes vectors with the given IDs from the index.
-// Returns the number of elements removed and error or nil.
-func (idx *Index) RemoveIDs(ids []int) (int, error) {
-	return indexRemoveIDs(idx.idx, ids)
+// RemoveIDs removes the vectors specified by sel from the index.
+// Returns the number of elements removed and error.
+func (idx *Index) RemoveIDs(sel *IDSelector) (int, error) {
+	return indexRemoveIDs(idx.idx, sel.sel)
 }
 
 // Delete frees the memory used by the index.
 func (idx *Index) Delete() {
-	C.faiss_Index_free(idx.idx)
+	indexDelete(idx.idx)
+}
+
+//--------------------------------------------------
+// index_factory
+//--------------------------------------------------
+
+// IndexFactory builds a composite index.
+// description is a comma-separated list of components.
+func IndexFactory(d int, description string, metric int) (*Index, error) {
+	cdesc := C.CString(description)
+	defer C.free(unsafe.Pointer(cdesc))
+	var index Index
+	c := C.faiss_index_factory(&index.idx, C.int(d), cdesc, C.FaissMetricType(metric))
+	if c != 0 {
+		return nil, getLastError()
+	}
+	return &index, nil
 }
 
 //--------------------------------------------------
@@ -209,39 +198,46 @@ type IndexFlat struct {
 	idx *C.FaissIndexFlat
 }
 
-// NewIndexFlat creates a new IndexFlat.
+// NewIndexFlat creates a new flat index.
 func NewIndexFlat(d int, metric int) (*IndexFlat, error) {
 	var index IndexFlat
-	c := C.faiss_IndexFlat_new_with(&index.idx, C.idx_t(d), C.FaissMetricType(metric))
-	if c != 0 {
+	if c := C.faiss_IndexFlat_new_with(
+		&index.idx,
+		C.idx_t(d),
+		C.FaissMetricType(metric),
+	); c != 0 {
 		return nil, getLastError()
 	}
 	return &index, nil
 }
 
-// NewIndexFlatIP creates a new IndexFlat with inner product as the metric type.
+// NewIndexFlatIP creates a new flat index with the inner product metric type.
 func NewIndexFlatIP(d int) (*IndexFlat, error) {
 	return NewIndexFlat(d, MetricInnerProduct)
 }
 
-func (idx *IndexFlat) Add(x [][]float32) error {
+func (idx *IndexFlat) D() int {
+	return indexD(idx.idx)
+}
+
+func (idx *IndexFlat) Add(x []float32) error {
 	return indexAdd(idx.idx, x)
 }
 
-func (idx *IndexFlat) AddWithIDs(x [][]float32, ids []int) error {
-	return indexAddWithIDs(idx.idx, x, ids)
+func (idx *IndexFlat) AddWithIDs(x []float32, xids []int64) error {
+	return indexAddWithIDs(idx.idx, x, xids)
 }
 
-func (idx *IndexFlat) Search(x [][]float32, k int) (
-	dist [][]float32, labels [][]int, err error,
+func (idx *IndexFlat) Search(x []float32, k int) (
+	distances []float32, labels []int64, err error,
 ) {
 	return indexSearch(idx.idx, x, k)
 }
 
-func (idx *IndexFlat) RemoveIDs(ids []int) (int, error) {
-	return indexRemoveIDs(idx.idx, ids)
+func (idx *IndexFlat) RemoveIDs(sel *IDSelector) (int, error) {
+	return indexRemoveIDs(idx.idx, sel.sel)
 }
 
 func (idx *IndexFlat) Delete() {
-	C.faiss_Index_free(idx.idx)
+	indexDelete(idx.idx)
 }
