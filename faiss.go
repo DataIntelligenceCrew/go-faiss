@@ -1,3 +1,7 @@
+// Package faiss provides bindings to Faiss, a library for vector similarity
+// search.
+// More detailed documentation can be found at the Faiss wiki:
+// https://github.com/facebookresearch/faiss/wiki.
 package faiss
 
 /*
@@ -29,6 +33,16 @@ func getLastError() error {
 // IDSelector represents a set of IDs to remove.
 type IDSelector struct {
 	sel *C.FaissIDSelector
+}
+
+// NewIDSelectorRange creates a selector that removes IDs on [imin, imax).
+func NewIDSelectorRange(imin, imax int64) (*IDSelector, error) {
+	var sel *C.FaissIDSelectorRange
+	c := C.faiss_IDSelectorRange_new(&sel, C.idx_t(imin), C.idx_t(imax))
+	if c != 0 {
+		return nil, getLastError()
+	}
+	return &IDSelector{(*C.FaissIDSelector)(sel)}, nil
 }
 
 // NewIDSelectorBatch creates a new batch selector.
@@ -65,13 +79,33 @@ const (
 	MetricJensenShannon = int(C.METRIC_JensenShannon)
 )
 
-// Index is the base structure for an index.
+// Index is a Faiss index.
 type Index struct {
 	idx *C.FaissIndex
 }
 
 func indexD(idx *C.FaissIndex) int {
 	return int(C.faiss_Index_d(idx))
+}
+
+func indexIsTrained(idx *C.FaissIndex) bool {
+	return C.faiss_Index_is_trained(idx) != 0
+}
+
+func indexNtotal(idx *C.FaissIndex) int64 {
+	return int64(C.faiss_Index_ntotal(idx))
+}
+
+func indexMetricType(idx *C.FaissIndex) int {
+	return int(C.faiss_Index_metric_type(idx))
+}
+
+func indexTrain(idx *C.FaissIndex, x []float32) error {
+	n := len(x) / indexD(idx)
+	if c := C.faiss_Index_train(idx, C.idx_t(n), (*C.float)(&x[0])); c != 0 {
+		return getLastError()
+	}
+	return nil
 }
 
 func indexAdd(idx *C.FaissIndex, x []float32) error {
@@ -95,12 +129,12 @@ func indexAddWithIDs(idx *C.FaissIndex, x []float32, xids []int64) error {
 	return nil
 }
 
-func indexSearch(idx *C.FaissIndex, x []float32, k int) (
+func indexSearch(idx *C.FaissIndex, x []float32, k int64) (
 	distances []float32, labels []int64, err error,
 ) {
 	n := len(x) / indexD(idx)
-	distances = make([]float32, n*k)
-	labels = make([]int64, n*k)
+	distances = make([]float32, int64(n)*k)
+	labels = make([]int64, int64(n)*k)
 	if c := C.faiss_Index_search(
 		idx,
 		C.idx_t(n),
@@ -112,6 +146,13 @@ func indexSearch(idx *C.FaissIndex, x []float32, k int) (
 		err = getLastError()
 	}
 	return
+}
+
+func indexReset(idx *C.FaissIndex) error {
+	if c := C.faiss_Index_reset(idx); c != 0 {
+		return getLastError()
+	}
+	return nil
 }
 
 func indexRemoveIDs(idx *C.FaissIndex, sel *C.FaissIDSelector) (int, error) {
@@ -126,11 +167,6 @@ func indexDelete(idx *C.FaissIndex) {
 	C.faiss_Index_free(idx)
 }
 
-// D returns the dimension of the indexed vectors.
-func (idx *Index) D() int {
-	return indexD(idx.idx)
-}
-
 // AsFlat casts idx to a flat index.
 // AsFlat panics if idx is not a flat index.
 func (idx *Index) AsFlat() *IndexFlat {
@@ -139,6 +175,32 @@ func (idx *Index) AsFlat() *IndexFlat {
 		panic("index is not a flat index")
 	}
 	return &IndexFlat{ptr}
+}
+
+// D returns the dimension of the indexed vectors.
+func (idx *Index) D() int {
+	return indexD(idx.idx)
+}
+
+// IsTrained returns true if the index has been trained or does not require
+// training.
+func (idx *Index) IsTrained() bool {
+	return indexIsTrained(idx.idx)
+}
+
+// Ntotal returns the number of indexed vectors.
+func (idx *Index) Ntotal() int64 {
+	return indexNtotal(idx.idx)
+}
+
+// MetricType returns the metric type of the index.
+func (idx *Index) MetricType() int {
+	return indexMetricType(idx.idx)
+}
+
+// Train trains the index on a representative set of vectors.
+func (idx *Index) Train(x []float32) error {
+	return indexTrain(idx.idx, x)
 }
 
 // Add adds vectors to the index.
@@ -154,10 +216,15 @@ func (idx *Index) AddWithIDs(x []float32, xids []int64) error {
 // Search queries the index with the vectors in x.
 // Returns the IDs of the k nearest neighbors for each query vector and the
 // corresponding distances.
-func (idx *Index) Search(x []float32, k int) (
+func (idx *Index) Search(x []float32, k int64) (
 	distances []float32, labels []int64, err error,
 ) {
 	return indexSearch(idx.idx, x, k)
+}
+
+// Reset removes all vectors from the index.
+func (idx *Index) Reset() error {
+	return indexReset(idx.idx)
 }
 
 // RemoveIDs removes the vectors specified by sel from the index.
@@ -216,8 +283,38 @@ func NewIndexFlatIP(d int) (*IndexFlat, error) {
 	return NewIndexFlat(d, MetricInnerProduct)
 }
 
+// NewIndexFlatL2 creates a new flat index with the L2 metric type.
+func NewIndexFlatL2(d int) (*IndexFlat, error) {
+	return NewIndexFlat(d, MetricL2)
+}
+
+// Xb returns the index's vectors.
+// The returned slice becomes invalid after any add or remove operation.
+func (idx *IndexFlat) Xb() []float32 {
+	var size C.size_t
+	var ptr *C.float
+	C.faiss_IndexFlat_xb(idx.idx, &ptr, &size)
+	return (*[1 << 30]float32)(unsafe.Pointer(ptr))[:size:size]
+}
+
 func (idx *IndexFlat) D() int {
 	return indexD(idx.idx)
+}
+
+func (idx *IndexFlat) IsTrained() bool {
+	return indexIsTrained(idx.idx)
+}
+
+func (idx *IndexFlat) Ntotal() int64 {
+	return indexNtotal(idx.idx)
+}
+
+func (idx *IndexFlat) MetricType() int {
+	return indexMetricType(idx.idx)
+}
+
+func (idx *IndexFlat) Train(x []float32) error {
+	return indexTrain(idx.idx, x)
 }
 
 func (idx *IndexFlat) Add(x []float32) error {
@@ -228,10 +325,14 @@ func (idx *IndexFlat) AddWithIDs(x []float32, xids []int64) error {
 	return indexAddWithIDs(idx.idx, x, xids)
 }
 
-func (idx *IndexFlat) Search(x []float32, k int) (
+func (idx *IndexFlat) Search(x []float32, k int64) (
 	distances []float32, labels []int64, err error,
 ) {
 	return indexSearch(idx.idx, x, k)
+}
+
+func (idx *IndexFlat) Reset() error {
+	return indexReset(idx.idx)
 }
 
 func (idx *IndexFlat) RemoveIDs(sel *IDSelector) (int, error) {
