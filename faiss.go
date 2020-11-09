@@ -30,6 +30,43 @@ func getLastError() error {
 // AuxIndexStructures
 //--------------------------------------------------
 
+// RangeSearchResult is the result of a range search.
+type RangeSearchResult struct {
+	rsr *C.FaissRangeSearchResult
+}
+
+// Nq returns the number of queries.
+func (r *RangeSearchResult) Nq() int {
+	return int(C.faiss_RangeSearchResult_nq(r.rsr))
+}
+
+// Lims returns a slice containing start and end indices for queries in the
+// distances and labels slices returned by Labels.
+func (r *RangeSearchResult) Lims() []int {
+	var lims *C.size_t
+	C.faiss_RangeSearchResult_lims(r.rsr, &lims)
+	length := r.Nq() + 1
+	return (*[1 << 30]int)(unsafe.Pointer(lims))[:length:length]
+}
+
+// Labels returns the unsorted IDs and respective distances for each query.
+// The result for query i is labels[lims[i]:lims[i+1]].
+func (r *RangeSearchResult) Labels() (labels []int64, distances []float32) {
+	lims := r.Lims()
+	length := lims[len(lims)-1]
+	var clabels *C.idx_t
+	var cdist *C.float
+	C.faiss_RangeSearchResult_labels(r.rsr, &clabels, &cdist)
+	labels = (*[1 << 30]int64)(unsafe.Pointer(clabels))[:length:length]
+	distances = (*[1 << 30]float32)(unsafe.Pointer(cdist))[:length:length]
+	return
+}
+
+// Delete frees the memory associated with r.
+func (r *RangeSearchResult) Delete() {
+	C.faiss_RangeSearchResult_free(r.rsr)
+}
+
 // IDSelector represents a set of IDs to remove.
 type IDSelector struct {
 	sel *C.FaissIDSelector
@@ -148,6 +185,26 @@ func indexSearch(idx *C.FaissIndex, x []float32, k int64) (
 	return
 }
 
+func indexRangeSearch(idx *C.FaissIndex, x []float32, radius float32) (
+	*RangeSearchResult, error,
+) {
+	n := len(x) / indexD(idx)
+	var rsr *C.FaissRangeSearchResult
+	if c := C.faiss_RangeSearchResult_new(&rsr, C.idx_t(n)); c != 0 {
+		return nil, getLastError()
+	}
+	if c := C.faiss_Index_range_search(
+		idx,
+		C.idx_t(n),
+		(*C.float)(&x[0]),
+		C.float(radius),
+		rsr,
+	); c != 0 {
+		return nil, getLastError()
+	}
+	return &RangeSearchResult{rsr}, nil
+}
+
 func indexReset(idx *C.FaissIndex) error {
 	if c := C.faiss_Index_reset(idx); c != 0 {
 		return getLastError()
@@ -220,6 +277,15 @@ func (idx *Index) Search(x []float32, k int64) (
 	distances []float32, labels []int64, err error,
 ) {
 	return indexSearch(idx.idx, x, k)
+}
+
+// RangeSearch queries the index with the vectors in x.
+// Returns all vectors with distance < radius.
+// Note that many indexes do not implement RangeSearch.
+func (idx *Index) RangeSearch(x []float32, radius float32) (
+	*RangeSearchResult, error,
+) {
+	return indexRangeSearch(idx.idx, x, radius)
 }
 
 // Reset removes all vectors from the index.
@@ -329,6 +395,12 @@ func (idx *IndexFlat) Search(x []float32, k int64) (
 	distances []float32, labels []int64, err error,
 ) {
 	return indexSearch(idx.idx, x, k)
+}
+
+func (idx *IndexFlat) RangeSearch(x []float32, radius float32) (
+	*RangeSearchResult, error,
+) {
+	return indexRangeSearch(idx.idx, x, radius)
 }
 
 func (idx *IndexFlat) Reset() error {
