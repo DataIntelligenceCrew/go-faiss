@@ -51,7 +51,7 @@ func (p *ParameterSpace) SetIndexParameter(idx *Index, name string, val float64)
 
 	c := C.faiss_ParameterSpace_set_index_parameter(p.ps, idx.idx, cname, C.double(val))
 	if c != 0 {
-		getLastError()
+		return getLastError()
 	}
 	return nil
 }
