@@ -1,6 +1,6 @@
-// Usage example for IndexFlat.
-// Based on tutorial/cpp/1-Flat.cpp from the Faiss distribution.
-// See https://github.com/facebookresearch/faiss/wiki/Getting-started for more
+// Usage example for IndexIVFFlat.
+// Based on tutorial/cpp/2-IVFFlat.cpp from the Faiss distribution.
+// See https://github.com/facebookresearch/faiss/wiki/Faster-search for more
 // information.
 package main
 
@@ -34,54 +34,50 @@ func main() {
 		xq[i*d] += float32(i) / 1000
 	}
 
-	index, err := faiss.NewIndexFlatL2(d)
+	index, err := faiss.IndexFactory(d, "IVF100,Flat", faiss.MetricL2)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer index.Delete()
 
 	fmt.Println("IsTrained() =", index.IsTrained())
+	index.Train(xb)
+	fmt.Println("IsTrained() =", index.IsTrained())
 	index.Add(xb)
 	fmt.Println("Ntotal() =", index.Ntotal())
 
 	k := int64(4)
 
-	// sanity check: search first 5 vectors of xb
-
-	dist, ids, err := index.Search(xb[:5*d], k)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("ids=")
-	for i := int64(0); i < 5; i++ {
-		for j := int64(0); j < k; j++ {
-			fmt.Printf("%5d ", ids[i*k+j])
-		}
-		fmt.Println()
-	}
-
-	fmt.Println("dist=")
-	for i := int64(0); i < 5; i++ {
-		for j := int64(0); j < k; j++ {
-			fmt.Printf("%7.6g ", dist[i*k+j])
-		}
-		fmt.Println()
-	}
-
 	// search xq
 
-	dist, ids, err = index.Search(xq, k)
+	_, ids, err := index.Search(xq, k)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("ids (first 5 results)=")
-	for i := int64(0); i < 5; i++ {
+	fmt.Println("ids (last 5 results)=")
+	for i := int64(nq) - 5; i < int64(nq); i++ {
 		for j := int64(0); j < k; j++ {
 			fmt.Printf("%5d ", ids[i*k+j])
 		}
 		fmt.Println()
+	}
+
+	// retry with nprobe=10 (default is 1)
+
+	ps, err := faiss.NewParameterSpace()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ps.Delete()
+
+	if err := ps.SetIndexParameter(index, "nprobe", 10); err != nil {
+		log.Fatal(err)
+	}
+
+	_, ids, err = index.Search(xq, k)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	fmt.Println("ids (last 5 results)=")
