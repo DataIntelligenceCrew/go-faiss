@@ -1,7 +1,7 @@
-// Usage example for IndexIVFFlat.
-// Based on tutorial/cpp/2-IVFFlat.cpp from the Faiss distribution.
-// See https://github.com/facebookresearch/faiss/wiki/Faster-search for more
-// information.
+// Usage example for IndexIVFPQ.
+// Based on tutorial/cpp/3-IVFPQ.cpp from the Faiss distribution.
+// See https://github.com/facebookresearch/faiss/wiki/Lower-memory-footprint for
+// more information.
 package main
 
 import (
@@ -34,35 +34,41 @@ func main() {
 		xq[i*d] += float32(i) / 1000
 	}
 
-	index, err := faiss.IndexFactory(d, "IVF100,Flat", faiss.MetricL2)
+	index, err := faiss.IndexFactory(d, "IVF100,PQ8", faiss.MetricL2)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer index.Delete()
 
-	fmt.Println("IsTrained() =", index.IsTrained())
 	index.Train(xb)
-	fmt.Println("IsTrained() =", index.IsTrained())
 	index.Add(xb)
 
 	k := int64(4)
 
-	// search xq
+	// sanity check
 
-	_, ids, err := index.Search(xq, k)
+	dist, ids, err := index.Search(xb[:5*d], k)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("ids (last 5 results)=")
-	for i := int64(nq) - 5; i < int64(nq); i++ {
+	fmt.Println("ids=")
+	for i := int64(0); i < 5; i++ {
 		for j := int64(0); j < k; j++ {
 			fmt.Printf("%5d ", ids[i*k+j])
 		}
 		fmt.Println()
 	}
 
-	// retry with nprobe=10 (default is 1)
+	fmt.Println("dist=")
+	for i := int64(0); i < 5; i++ {
+		for j := int64(0); j < k; j++ {
+			fmt.Printf("%7.6g ", dist[i*k+j])
+		}
+		fmt.Println()
+	}
+
+	// search xq
 
 	ps, err := faiss.NewParameterSpace()
 	if err != nil {
