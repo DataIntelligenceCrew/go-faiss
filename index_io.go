@@ -7,6 +7,7 @@ package faiss
 import "C"
 import "unsafe"
 
+// WriteIndex writes an index to a file.
 func WriteIndex(idx Index, filename string) error {
 	cfname := C.CString(filename)
 	defer C.free(unsafe.Pointer(cfname))
@@ -16,11 +17,13 @@ func WriteIndex(idx Index, filename string) error {
 	return nil
 }
 
+// IO flags
 const (
 	IOFlagMmap     = C.FAISS_IO_FLAG_MMAP
 	IOFlagReadOnly = C.FAISS_IO_FLAG_READ_ONLY
 )
 
+// ReadIndex reads an index from a file.
 func ReadIndex(filename string, ioflags int) (*IndexImpl, error) {
 	cfname := C.CString(filename)
 	defer C.free(unsafe.Pointer(cfname))
