@@ -19,12 +19,12 @@ func getLastError() error {
 
 // Metric type
 const (
-	MetricInnerProduct  = int(C.METRIC_INNER_PRODUCT)
-	MetricL2            = int(C.METRIC_L2)
-	MetricL1            = int(C.METRIC_L1)
-	MetricLinf          = int(C.METRIC_Linf)
-	MetricLp            = int(C.METRIC_Lp)
-	MetricCanberra      = int(C.METRIC_Canberra)
-	MetricBrayCurtis    = int(C.METRIC_BrayCurtis)
-	MetricJensenShannon = int(C.METRIC_JensenShannon)
+	MetricInnerProduct  = C.METRIC_INNER_PRODUCT
+	MetricL2            = C.METRIC_L2
+	MetricL1            = C.METRIC_L1
+	MetricLinf          = C.METRIC_Linf
+	MetricLp            = C.METRIC_Lp
+	MetricCanberra      = C.METRIC_Canberra
+	MetricBrayCurtis    = C.METRIC_BrayCurtis
+	MetricJensenShannon = C.METRIC_JensenShannon
 )
