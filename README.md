@@ -32,3 +32,12 @@ API documentation is available at <https://pkg.go.dev/github.com/DataIntelligenc
 See the [Faiss wiki](https://github.com/facebookresearch/faiss/wiki) for more information.
 
 Examples can be found in the [_example](_example) directory.
+
+## Dockerfile
+
+faiss and go-faiss are wrapped into a Dockerfile to make it easier to get up and running. 
+Can be run like:
+```
+docker build -t go-faiss .
+docker run --rm -it go-faiss bash
+```
