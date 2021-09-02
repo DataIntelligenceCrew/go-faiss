@@ -24,3 +24,15 @@ func TransferToGpu(index Index) (Index, error) {
 
 	return &faissIndex{idx: gpuIndex}, nil
 }
+
+func TransferToCpu(gpuIndex Index) (Index, error) {
+	var cpuIndex *C.FaissIndex
+
+	exitCode := C.faiss_index_gpu_to_cpu(gpuIndex.cPtr(), &cpuIndex)
+	if exitCode != 0 {
+		return nil, errors.New("error transferring to gpu")
+	}
+
+	return &faissIndex{idx: cpuIndex}, nil
+}
+
