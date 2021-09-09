@@ -1,3 +1,5 @@
+//+build gpu
+
 package faiss
 
 import (
