@@ -1,4 +1,4 @@
-module github.com/DataIntelligenceCrew/go-faiss
+module github.com/Anyvisionltd/go-faiss
 
 go 1.14
 
