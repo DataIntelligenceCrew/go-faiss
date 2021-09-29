@@ -5,6 +5,8 @@ package faiss
 #include <faiss/c_api/Index_c.h>
 #include <faiss/c_api/impl/AuxIndexStructures_c.h>
 #include <faiss/c_api/index_factory_c.h>
+#include <faiss/c_api/gpu/StandardGpuResources_c.h>
+#include <faiss/c_api/gpu/GpuAutoTune_c.h>
 */
 import "C"
 import "unsafe"
@@ -56,10 +58,17 @@ type Index interface {
 	Delete()
 
 	cPtr() *C.FaissIndex
+
+	cGpuResource() *C.FaissStandardGpuResources
 }
 
 type faissIndex struct {
 	idx *C.FaissIndex
+	resource *C.FaissStandardGpuResources
+}
+
+func (idx *faissIndex) cGpuResource() *C.FaissStandardGpuResources {
+	return idx.resource
 }
 
 func (idx *faissIndex) cPtr() *C.FaissIndex {
