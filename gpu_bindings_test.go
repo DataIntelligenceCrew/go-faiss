@@ -5,6 +5,7 @@ package faiss
 import (
 	"github.com/stretchr/testify/require"
 	"testing"
+	"time"
 )
 
 func TestFlatIndexOnGpuFunctionality(t *testing.T) {
@@ -114,3 +115,19 @@ func TestTransferToGpuAndBack(t *testing.T) {
 
 }
 
+func TestFreeGPUResource(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		t.Logf("creating index %v", i)
+		flatIndex, err := NewIndexFlatIP(256)
+		require.Nil(t, err)
+		flatIndexGpu, err := TransferToGpu(flatIndex)
+		require.Nil(t, err)
+
+		t.Log("created indexes, freeing..")
+		err = Free(flatIndexGpu)
+		require.Nil(t, err)
+		t.Log("freed, memory should be freed..")
+		time.Sleep(1 * time.Second)
+	}
+
+}
