@@ -11,6 +11,7 @@ import (
 	"errors"
 )
 
+
 func TransferToGpu(index Index) (Index, error) {
 	var gpuResources *C.FaissStandardGpuResources
 	var gpuIndex *C.FaissGpuIndex
@@ -24,7 +25,7 @@ func TransferToGpu(index Index) (Index, error) {
 		return nil, errors.New("error transferring to gpu")
 	}
 
-	return &faissIndex{idx: gpuIndex}, nil
+	return &faissIndex{idx: gpuIndex, resource: gpuResources}, nil
 }
 
 func TransferToCpu(gpuIndex Index) (Index, error) {
@@ -35,6 +36,25 @@ func TransferToCpu(gpuIndex Index) (Index, error) {
 		return nil, errors.New("error transferring to gpu")
 	}
 
+	Free(gpuIndex)
+	
 	return &faissIndex{idx: cpuIndex}, nil
 }
 
+func Free(index Index) {
+	var gpuResource *C.FaissStandardGpuResources
+	gpuResource = index.cGpuResource()
+	C.faiss_StandardGpuResources_free(gpuResource)
+	index.Delete()
+}
+
+func CreateGpuIndex() (Index, error) {
+	var gpuResource *C.FaissStandardGpuResources
+	var gpuIndex *C.FaissGpuIndex
+	c := C.faiss_StandardGpuResources_new(&gpuResource)
+	if c != 0 {
+		return nil, errors.New("error on init gpu %v")
+	}
+
+	return &faissIndex{idx: gpuIndex, resource: gpuResource}, nil
+}
