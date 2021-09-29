@@ -3,7 +3,6 @@
 package faiss
 
 import (
-	"fmt"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -23,7 +22,7 @@ func TestFlatIndexOnGpuFunctionality(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, int64(len(vectorsToAdd)), gpuIdx.Ntotal())
 
-	fmt.Println(distances, resultIds, err)
+	t.Log(distances, resultIds, err)
 	for i := range vectorsToAdd {
 		require.Equal(t, int64(i), resultIds[len(vectorsToAdd)*i])
 		require.Zero(t, distances[len(vectorsToAdd)*i])
@@ -60,8 +59,8 @@ func TestIndexIDMapOnGPU(t *testing.T) {
 
 	distances, resultIds, err := gpuIndex.Search(vectorsToAdd, 5)
 	require.Nil(t, err)
-	fmt.Println(gpuIndex.D(), gpuIndex.Ntotal())
-	fmt.Println(distances, resultIds, err)
+	t.Log(gpuIndex.D(), gpuIndex.Ntotal())
+	t.Log(distances, resultIds, err)
 	for i := range vectorsToAdd {
 		require.Equal(t, ids[i], resultIds[len(vectorsToAdd)*i])
 		require.Zero(t, distances[len(vectorsToAdd)*i])
@@ -97,7 +96,7 @@ func TestTransferToGpuAndBack(t *testing.T) {
 
 	require.Equal(t, int64(4), gpuIndex.Ntotal())
 	distances2, resultIds2, err := gpuIndex.Search([]float32{1}, 5)
-	fmt.Println(distances2, resultIds2, gpuIndex.Ntotal())
+	t.Log(distances2, resultIds2, gpuIndex.Ntotal())
 	require.Nil(t, err)
 	require.Equal(t, float32(1), distances2[0])
 
@@ -109,7 +108,7 @@ func TestTransferToGpuAndBack(t *testing.T) {
 	idsSelector, err = NewIDSelectorBatch([]int64{0})
 	cpuIndex.RemoveIDs(idsSelector)
 	distances2, resultIds2, err = cpuIndex.Search([]float32{1}, 5)
-	fmt.Println(distances2, resultIds2, cpuIndex.Ntotal())
+	t.Log(distances2, resultIds2, cpuIndex.Ntotal())
 	require.Nil(t, err)
 	require.Equal(t, float32(1), distances2[0])
 
