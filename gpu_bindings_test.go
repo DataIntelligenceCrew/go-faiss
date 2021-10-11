@@ -117,14 +117,15 @@ func TestTransferToGpuAndBack(t *testing.T) {
 
 func TestFreeGPUResource(t *testing.T) {
 	for i := 0; i < 20; i++ {
+		gpus:= []int{0}
 		t.Logf("creating index %v", i)
 		flatIndex, err := NewIndexFlatIP(256)
 		require.Nil(t, err)
-		flatIndexGpu, err := TransferToGpu(flatIndex)
+		flatIndexGpu, err := TransferToAllGPUs(flatIndex, gpus)
 		require.Nil(t, err)
 
 		t.Log("created indexes, freeing..")
-		err = Free(flatIndexGpu)
+		Free(flatIndexGpu)
 		require.Nil(t, err)
 		t.Log("freed, memory should be freed..")
 		time.Sleep(1 * time.Second)
