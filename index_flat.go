@@ -52,5 +52,5 @@ func (idx *IndexImpl) AsFlat() *IndexFlat {
 	if ptr == nil {
 		panic("index is not a flat index")
 	}
-	return &IndexFlat{&faissIndex{ptr}}
+	return &IndexFlat{&faissIndex{idx: ptr}}
 }
