@@ -1,4 +1,5 @@
-//+build cpu
+//go:build cpu
+// +build cpu
 
 package faiss
 
@@ -21,10 +22,10 @@ func CreateGpuIndex() (Index, error) {
 	return nil, errors.New("Not supported when running in CPU mode..")
 }
 
-func TransferToAllGPUs(index Index,gpuIndexes []int) (Index, error) {
+func TransferToAllGPUs(index Index, gpuIndexes []int, sharding bool) (Index, error) {
 	return nil, errors.New("Not supported when running in CPU mode..")
 }
 
-func TransferToAllGPUsWithOptions(index Index,gpuIndexes []int) (Index, error) {
+func TransferToAllGPUsWithOptions(index Index, gpuIndexes []int) (Index, error) {
 	return nil, errors.New("Not supported when running in CPU mode..")
 }
