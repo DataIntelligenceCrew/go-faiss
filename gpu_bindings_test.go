@@ -1,4 +1,5 @@
-//+build gpu
+//go:build gpu
+// +build gpu
 
 package faiss
 
@@ -15,7 +16,7 @@ func TestFlatIndexOnGpuFunctionality(t *testing.T) {
 	gpuIdx, err := TransferToGpu(index)
 	require.Nil(t, err)
 
-	vectorsToAdd := []float32{1,2,3,4,5}
+	vectorsToAdd := []float32{1, 2, 3, 4, 5}
 	err = gpuIdx.Add(vectorsToAdd)
 	require.Nil(t, err)
 
@@ -49,7 +50,7 @@ func TestIndexIDMapOnGPU(t *testing.T) {
 	gpuIndex, err := TransferToGpu(indexMap)
 	require.Nil(t, err)
 
-	vectorsToAdd := []float32{1,2,3,4,5}
+	vectorsToAdd := []float32{1, 2, 3, 4, 5}
 	ids := make([]int64, len(vectorsToAdd))
 	for i := 0; i < len(vectorsToAdd); i++ {
 		ids[i] = int64(i)
@@ -78,7 +79,7 @@ func TestTransferToGpuAndBack(t *testing.T) {
 	gpuIndex, err := TransferToGpu(indexMap)
 	require.Nil(t, err)
 
-	vectorsToAdd := []float32{1,2,4,7,11}
+	vectorsToAdd := []float32{1, 2, 4, 7, 11}
 	ids := make([]int64, len(vectorsToAdd))
 	for i := 0; i < len(vectorsToAdd); i++ {
 		ids[i] = int64(i)
@@ -101,7 +102,6 @@ func TestTransferToGpuAndBack(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, float32(1), distances2[0])
 
-
 	cpuIndex, err := TransferToCpu(gpuIndex)
 	require.Nil(t, err)
 	require.Equal(t, int64(4), cpuIndex.Ntotal())
@@ -117,11 +117,11 @@ func TestTransferToGpuAndBack(t *testing.T) {
 
 func TestFreeGPUResource(t *testing.T) {
 	for i := 0; i < 20; i++ {
-		gpus:= []int{0}
+		gpus := []int{0}
 		t.Logf("creating index %v", i)
 		flatIndex, err := NewIndexFlatIP(256)
 		require.Nil(t, err)
-		flatIndexGpu, err := TransferToAllGPUs(flatIndex, gpus)
+		flatIndexGpu, err := TransferToAllGPUs(flatIndex, gpus, false)
 		require.Nil(t, err)
 
 		t.Log("created indexes, freeing..")
