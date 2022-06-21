@@ -8,6 +8,7 @@ package faiss
 #include <stddef.h>
 #include <faiss/c_api/gpu/StandardGpuResources_c.h>
 #include <faiss/c_api/gpu/GpuAutoTune_c.h>
+#include <faiss/c_api/gpu/GpuIndicesOptions_c.h>
 */
 import "C"
 import (
@@ -35,13 +36,14 @@ func TransferToGpu(index Index) (Index, error) {
 	return &faissIndex{idx: gpuIndex, resources: gpuResources}, nil
 }
 
-func TransferToAllGPUs(index Index, gpuIndexes []int) (Index, error) {
+// to use sharding use this version of faiss - git clone -b fix-cpi-gpu-faiss_index_cpu_to_gpu_multiple_with_options https://github.com/AviadHAv/faiss.git
+// TransferToAllGPUs - gpuIndexes - which gpus to use [2,4,5] , index - flat or idmap , shard - should shard accross all gpus if not will put same data on all gpus
+func TransferToAllGPUs(index Index, gpuIndexes []int, sharding bool) (Index, error) {
 	amountOfGPUs := len(gpuIndexes)
 	gpuResources := make([]*C.FaissStandardGpuResources, len(gpuIndexes))
 	for i := 0; i < len(gpuIndexes); i++ {
 		var resourceIndex *C.FaissStandardGpuResources
 		gpuResources[i] = resourceIndex
-
 	}
 
 	var gpuIndex *C.FaissGpuIndex
@@ -51,13 +53,23 @@ func TransferToAllGPUs(index Index, gpuIndexes []int) (Index, error) {
 			return nil, errors.New("error on init gpu %v")
 		}
 	}
-
-	exitCode := C.faiss_index_cpu_to_gpu_multiple(
-		(**C.FaissStandardGpuResources)(unsafe.Pointer(&gpuResources[0])),
-		(*C.int)(unsafe.Pointer(&gpuIndexes[0])),
-		C.size_t(len(gpuIndexes)),
-		index.cPtr(),
-		&gpuIndex)
+	var exitCode C.int
+	if sharding {
+		exitCode = C.faiss_index_cpu_to_gpu_multiple_sharding(
+			(**C.FaissStandardGpuResources)(unsafe.Pointer(&gpuResources[0])),
+			C.size_t(len(gpuResources)),
+			(*C.int)(unsafe.Pointer(&gpuIndexes[0])),
+			C.size_t(len(gpuIndexes)),
+			index.cPtr(),
+			&gpuIndex)
+	} else {
+		exitCode = C.faiss_index_cpu_to_gpu_multiple(
+			(**C.FaissStandardGpuResources)(unsafe.Pointer(&gpuResources[0])),
+			(*C.int)(unsafe.Pointer(&gpuIndexes[0])),
+			C.size_t(len(gpuIndexes)),
+			index.cPtr(),
+			&gpuIndex)
+	}
 
 	if exitCode != 0 {
 		return nil, errors.New("error transferring to gpu")
