@@ -52,6 +52,11 @@ func TransferToAllGPUs(index Index, gpuIndexes []int, sharding bool) (Index, err
 		if c != 0 {
 			return nil, errors.New("error on init gpu %v")
 		}
+		c = C.faiss_StandardGpuResources_setDefaultNullStreamAllDevices(gpuResources[i])
+		if c != 0 {
+			return nil, errors.New("error on init gpu %v")
+		}
+
 	}
 	var exitCode C.int
 	if sharding {
