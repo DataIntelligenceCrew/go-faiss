@@ -26,10 +26,10 @@ sudo make -C build install
 ```
 
 Building will produce the dynamic library `faiss_c`.
-You will need to install it in a place where your system will find it (e.g. `/usr/lib` on Linux).
+You will need to install it in a place where your system will find it (e.g. `/usr/local/lib` on mac or `/usr/lib` on Linux).
 You can do this with:
 
-    sudo cp build/c_api/libfaiss_c.so /usr/lib
+    sudo cp build/c_api/libfaiss_c.so /usr/local/lib
 
 Now you can install the Go module:
 
