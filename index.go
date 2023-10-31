@@ -3,11 +3,15 @@ package faiss
 /*
 #include <stdlib.h>
 #include <faiss/c_api/Index_c.h>
+#include <faiss/c_api/Index_c_ex.h>
 #include <faiss/c_api/impl/AuxIndexStructures_c.h>
 #include <faiss/c_api/index_factory_c.h>
 */
 import "C"
-import "unsafe"
+import (
+	"fmt"
+	"unsafe"
+)
 
 // Index is a Faiss index.
 //
@@ -40,6 +44,12 @@ type Index interface {
 	// Returns the IDs of the k nearest neighbors for each query vector and the
 	// corresponding distances.
 	Search(x []float32, k int64) (distances []float32, labels []int64, err error)
+
+	Reconstruct(key int64) ([]float32, error)
+
+	ReconstructBatch(n int64, keys []int64) (recons []float32, err error)
+
+	MergeFrom(other Index, add_id int64) error
 
 	// RangeSearch queries the index with the vectors in x.
 	// Returns all vectors with distance < radius.
@@ -114,6 +124,7 @@ func (idx *faissIndex) AddWithIDs(x []float32, xids []int64) error {
 func (idx *faissIndex) Search(x []float32, k int64) (
 	distances []float32, labels []int64, err error,
 ) {
+
 	n := len(x) / idx.D()
 	distances = make([]float32, int64(n)*k)
 	labels = make([]int64, int64(n)*k)
@@ -127,7 +138,60 @@ func (idx *faissIndex) Search(x []float32, k int64) (
 	); c != 0 {
 		err = getLastError()
 	}
+
 	return
+}
+
+func (idx *faissIndex) Reconstruct(key int64) (recons []float32, err error) {
+
+	rv := make([]float32, idx.D())
+	if c := C.faiss_Index_reconstruct(
+		idx.idx,
+		C.idx_t(key),
+		(*C.float)(&rv[0]),
+	); c != 0 {
+		err = getLastError()
+	}
+
+	return rv, err
+}
+
+func (idx *faissIndex) ReconstructBatch(n int64, keys []int64) (recons []float32, err error) {
+	rv := make([]float32, int(n)*idx.D())
+	if c := C.faiss_Index_reconstruct_batch(
+		idx.idx,
+		C.idx_t(n),
+		(*C.idx_t)(&keys[0]),
+		(*C.float)(&rv[0]),
+	); c != 0 {
+		err = getLastError()
+	}
+
+	return rv, err
+}
+
+func (i *IndexImpl) MergeFrom(other Index, add_id int64) error {
+	if impl, ok := other.(*IndexImpl); ok {
+		return i.Index.MergeFrom(impl.Index, add_id)
+	}
+	return fmt.Errorf("merge not support")
+}
+
+func (idx *faissIndex) MergeFrom(other Index, add_id int64) (err error) {
+	otherIdx, ok := other.(*faissIndex)
+	if !ok {
+		return fmt.Errorf("merge api not supported")
+	}
+
+	if c := C.faiss_Index_merge_from(
+		idx.idx,
+		otherIdx.idx,
+		(C.idx_t)(add_id),
+	); c != 0 {
+		err = getLastError()
+	}
+
+	return err
 }
 
 func (idx *faissIndex) RangeSearch(x []float32, radius float32) (
