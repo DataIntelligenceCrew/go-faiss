@@ -43,11 +43,7 @@ func main() {
 	}
 	defer indexF.Delete()
 
-	subIdx, err := indexF.GetSubIndex()
-	if err != nil {
-		log.Fatal(err)
-	}
-	index, err := subIdx.AsIVF()
+	index, err := indexF.GetIVFSubIndex()
 	if err != nil {
 		log.Fatal(err)
 	}
