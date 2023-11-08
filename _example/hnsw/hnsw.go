@@ -34,7 +34,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer index.Delete()
+	defer index.Close()
 
 	index.Train(database_vecs)
 	index.Add(database_vecs)

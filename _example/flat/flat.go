@@ -38,7 +38,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer index.Delete()
+	defer index.Close()
 
 	fmt.Println("IsTrained() =", index.IsTrained())
 	index.Add(xb)

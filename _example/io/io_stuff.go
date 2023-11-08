@@ -43,10 +43,10 @@ func main() {
 
 	buf, err := faiss.WriteIndexIntoBuffer(index)
 	if err != nil {
-		index.Delete()
+		index.Close()
 		log.Fatal(err)
 	}
-	index.Delete()
+	index.Close()
 
 	k := int64(4)
 
