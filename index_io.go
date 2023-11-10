@@ -51,7 +51,9 @@ func WriteIndexIntoBuffer(idx Index) ([]byte, error) {
 
 	// safe to free the c memory allocated while serializing the index, and the val
 	// is something that's present in go runtime so different address space altogether
-	C.free(unsafe.Pointer(tempBuf))
+	// TODO: Free tempBuf? Remember: MB-59569
+	// C.free(unsafe.Pointer(tempBuf))
+
 	return val, nil
 }
 
@@ -72,7 +74,8 @@ func ReadIndexFromBuffer(buf []byte, ioflags int) (*IndexImpl, error) {
 		return nil, getLastError()
 	}
 
-	C.free(ptr)
+	// TODO: Free ptr? Remember: MB-59569
+	// C.free(ptr)
 
 	// after exiting the faiss_read_index_buf, the ref count to the memory allocated
 	// for the freshly created faiss::index becomes 1 (held by idx.idx of type C.FaissIndex)
