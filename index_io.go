@@ -37,24 +37,31 @@ func WriteIndexIntoBuffer(idx Index) ([]byte, error) {
 	// at this point, the idx has a valid ref count. furthermore, the index is
 	// something that's present on the C memory space, so not available to go's
 	// GC. needs to be freed when its of no more use.
-	//
-	// furthermore, tempBuf free mechanism needs to be evaluated.
-	// tempBuf and val share the same address, but the original allocation of the tempBuf
-	// is dangling and zero-ref.
 
 	// todo: get a better upper bound.
 	// todo: add checksum.
 	// the content populated in the tempBuf is converted from *C.uchar to unsafe.Pointer
 	// and then the pointer is casted into a large byte slice which is then sliced
 	// to a length and capacity equal to bufSize returned across the cgo interface.
+	// NOTE: it still points to the C memory though
 	val := (*[1 << 32]byte)(unsafe.Pointer(tempBuf))[:int(bufSize):int(bufSize)]
-
-	// safe to free the c memory allocated while serializing the index, and the val
+	rv := make([]byte, len(val))
+	// an explicit copy is necessary to free the memory on C heap and then return
+	// the rv back to the caller which is definitely on goruntime space (which will
+	// GC'd later on).
+	//
+	// an optimization over here - create buffer pool which can be used to make the
+	// memory allocations cheaper. specifically two separate pools can be utilized,
+	// one for C pointers and another for goruntime. within the faiss_write_index_buf
+	// a cheaper calloc rather than malloc can be used to make any extra allocations
+	// cheaper.
+	copy(rv, val)
+	// safe to free the c memory allocated while serializing the index, and the rv
 	// is something that's present in go runtime so different address space altogether
-	// TODO: Free tempBuf? Remember: MB-59569
-	// C.free(unsafe.Pointer(tempBuf))
-
-	return val, nil
+	// p.s: no need to free "val" since the underlying memory is same for both the
+	// vars
+	C.free(unsafe.Pointer(tempBuf))
+	return rv, nil
 }
 
 func ReadIndexFromBuffer(buf []byte, ioflags int) (*IndexImpl, error) {
@@ -74,8 +81,7 @@ func ReadIndexFromBuffer(buf []byte, ioflags int) (*IndexImpl, error) {
 		return nil, getLastError()
 	}
 
-	// TODO: Free ptr? Remember: MB-59569
-	// C.free(ptr)
+	C.free(ptr)
 
 	// after exiting the faiss_read_index_buf, the ref count to the memory allocated
 	// for the freshly created faiss::index becomes 1 (held by idx.idx of type C.FaissIndex)
