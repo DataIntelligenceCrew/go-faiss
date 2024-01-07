@@ -24,7 +24,7 @@ You can do this with:
 
 Now you can install the Go module:
 
-    go get github.com/DataIntelligenceCrew/go-faiss
+    go get github.com/AnyVisionltd/go-faiss
 
 ## Usage
 

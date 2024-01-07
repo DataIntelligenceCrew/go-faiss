@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/DataIntelligenceCrew/go-faiss"
+	"github.com/AnyVisionltd/go-faiss"
 )
 
 func main() {
@@ -17,7 +17,7 @@ func main() {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	xb := []float32{1,2,3,4,5}
+	xb := []float32{1, 2, 3, 4, 5}
 	ids := make([]int64, dbSize)
 	for i := 0; i < dbSize; i++ {
 		ids[i] = int64(i)
@@ -27,7 +27,7 @@ func main() {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	toFind := xb[dimension:2*dimension]
+	toFind := xb[dimension : 2*dimension]
 	distances1, resultIds, err := indexMap.Search(toFind, 5)
 	fmt.Println(distances1, resultIds, err)
 	fmt.Println(resultIds[0] == ids[1])

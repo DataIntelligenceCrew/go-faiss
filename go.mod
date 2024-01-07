@@ -1,5 +1,5 @@
-module github.com/Anyvisionltd/go-faiss
+module github.com/AnyVisionltd/go-faiss
 
-go 1.14
+go 1.21
 
 require github.com/stretchr/testify v1.7.0
