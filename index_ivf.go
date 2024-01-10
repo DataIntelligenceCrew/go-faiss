@@ -37,3 +37,13 @@ func (idx *IndexImpl) GetSubIndex() (*IndexImpl, error) {
 
 	return &IndexImpl{&faissIndex{subIdx}}, nil
 }
+
+// pass nprobe to be set as index time option for IVF indexes only.
+// varying nprobe impacts recall but with an increase in latency.
+func (idx *IndexImpl) SetNProbe(nprobe int32) {
+	ivfPtr := C.faiss_IndexIVF_cast(idx.cPtr())
+	if ivfPtr == nil {
+		return
+	}
+	C.faiss_IndexIVF_set_nprobe(ivfPtr, C.ulong(nprobe))
+}
