@@ -3,9 +3,12 @@ package faiss
 /*
 #include <stdlib.h>
 #include <faiss/c_api/Index_c.h>
+#include <faiss/c_api/IndexIVF_c.h>
+#include <faiss/c_api/IndexIVF_c_ex.h>
 #include <faiss/c_api/Index_c_ex.h>
 #include <faiss/c_api/impl/AuxIndexStructures_c.h>
 #include <faiss/c_api/index_factory_c.h>
+#include <faiss/c_api/MetaIndexes_c.h>
 */
 import "C"
 import (
@@ -44,6 +47,9 @@ type Index interface {
 	// Returns the IDs of the k nearest neighbors for each query vector and the
 	// corresponding distances.
 	Search(x []float32, k int64) (distances []float32, labels []int64, err error)
+
+	SearchWithoutIDs(x []float32, k int64, exclude []int64) (distances []float32,
+		labels []int64, err error)
 
 	Reconstruct(key int64) ([]float32, error)
 
@@ -139,6 +145,45 @@ func (idx *faissIndex) Search(x []float32, k int64) (
 		err = getLastError()
 	}
 
+	return
+}
+
+func (idx *faissIndex) SearchWithoutIDs(x []float32, k int64, exclude []int64) (
+	distances []float32, labels []int64, err error,
+) {
+	if len(exclude) <= 0 {
+		return idx.Search(x, k)
+	}
+
+	excludeSelector, err := NewIDSelectorNot(exclude)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var sp *C.FaissSearchParameters
+	C.faiss_SearchParameters_new(&sp, (*C.FaissIDSelector)(excludeSelector.sel))
+	ivfPtr := C.faiss_IndexIVF_cast(idx.cPtr())
+	if ivfPtr != nil {
+		sp = C.faiss_SearchParametersIVF_cast(sp)
+		C.faiss_SearchParametersIVF_new_with_sel(&sp, (*C.FaissIDSelector)(excludeSelector.sel))
+	}
+
+	n := len(x) / idx.D()
+	distances = make([]float32, int64(n)*k)
+	labels = make([]int64, int64(n)*k)
+
+	if c := C.faiss_Index_search_with_params(
+		idx.idx,
+		C.idx_t(n),
+		(*C.float)(&x[0]),
+		C.idx_t(k), sp,
+		(*C.float)(&distances[0]),
+		(*C.idx_t)(&labels[0]),
+	); c != 0 {
+		err = getLastError()
+	}
+	excludeSelector.Delete()
+	C.faiss_SearchParameters_free(sp)
 	return
 }
 

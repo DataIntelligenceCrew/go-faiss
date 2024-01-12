@@ -33,6 +33,24 @@ func NewIDSelectorBatch(indices []int64) (*IDSelector, error) {
 	return &IDSelector{(*C.FaissIDSelector)(sel)}, nil
 }
 
+// NewIDSelectorNot creates a new Not selector, wrapped arround a
+// batch selector, with the IDs in 'exclude'.
+func NewIDSelectorNot(exclude []int64) (*IDSelector, error) {
+	batchSelector, err := NewIDSelectorBatch(exclude)
+	if err != nil {
+		return nil, err
+	}
+
+	var sel *C.FaissIDSelectorNot
+	if c := C.faiss_IDSelectorNot_new(
+		&sel,
+		batchSelector.sel,
+	); c != 0 {
+		return nil, getLastError()
+	}
+	return &IDSelector{(*C.FaissIDSelector)(sel)}, nil
+}
+
 // Delete frees the memory associated with s.
 func (s *IDSelector) Delete() {
 	C.faiss_IDSelector_free(s.sel)
