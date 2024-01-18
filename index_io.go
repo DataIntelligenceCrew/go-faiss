@@ -65,23 +65,19 @@ func WriteIndexIntoBuffer(idx Index) ([]byte, error) {
 }
 
 func ReadIndexFromBuffer(buf []byte, ioflags int) (*IndexImpl, error) {
-	// CBytes allocates memory in the C heap and gets a pointer which Go can play around with
-	// safe to free this since buf is in the go runtime memory
-	ptr := C.CBytes(buf)
+	ptr := (*C.uchar)(unsafe.Pointer(&buf[0]))
 	size := C.int(len(buf))
-	// as part of defer, better to recycle the memory block (pointed to by ptr)
-	// so that we reuse memory and avoid allocations in next calls.
 
 	// the idx var has C.FaissIndex within the struct which is nil as of now.
 	var idx faissIndex
-	if c := C.faiss_read_index_buf((*C.uchar)(ptr),
+	if c := C.faiss_read_index_buf(ptr,
 		size,
 		C.int(ioflags),
 		&idx.idx); c != 0 {
 		return nil, getLastError()
 	}
 
-	C.free(ptr)
+	ptr = nil
 
 	// after exiting the faiss_read_index_buf, the ref count to the memory allocated
 	// for the freshly created faiss::index becomes 1 (held by idx.idx of type C.FaissIndex)
