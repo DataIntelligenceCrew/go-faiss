@@ -53,7 +53,7 @@ type Index interface {
 
 	Reconstruct(key int64) ([]float32, error)
 
-	ReconstructBatch(n int64, keys []int64) (recons []float32, err error)
+	ReconstructBatch(n int64, keys []int64, reconsBuf []float32) ([]float32, error)
 
 	MergeFrom(other Index, add_id int64) error
 
@@ -201,18 +201,18 @@ func (idx *faissIndex) Reconstruct(key int64) (recons []float32, err error) {
 	return rv, err
 }
 
-func (idx *faissIndex) ReconstructBatch(n int64, keys []int64) (recons []float32, err error) {
-	rv := make([]float32, int(n)*idx.D())
+func (idx *faissIndex) ReconstructBatch(n int64, keys []int64, reconsBuf []float32) ([]float32, error) {
+	var err error
 	if c := C.faiss_Index_reconstruct_batch(
 		idx.idx,
 		C.idx_t(n),
 		(*C.idx_t)(&keys[0]),
-		(*C.float)(&rv[0]),
+		(*C.float)(&reconsBuf[0]),
 	); c != 0 {
 		err = getLastError()
 	}
 
-	return rv, err
+	return reconsBuf, err
 }
 
 func (i *IndexImpl) MergeFrom(other Index, add_id int64) error {
