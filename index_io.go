@@ -8,6 +8,7 @@ package faiss
 */
 import "C"
 import (
+	"fmt"
 	"runtime"
 	"unsafe"
 )
@@ -74,6 +75,9 @@ func WriteIndexIntoBuffer(idx Index) ([]byte, error) {
 
 	// safe to free the c memory allocated while serializing the index;
 	// rv is from go runtime - so different address space altogether
+	if tempBuf == nil {
+		fmt.Println("free on nil")
+	}
 	C.free(unsafe.Pointer(tempBuf))
 	// p.s: no need to free "val" since the underlying memory is same as tempBuf (deferred free)
 	val = nil
