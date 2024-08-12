@@ -14,6 +14,7 @@ import "C"
 import (
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"unsafe"
 )
 
@@ -50,6 +51,9 @@ type Index interface {
 	Search(x []float32, k int64) (distances []float32, labels []int64, err error)
 
 	SearchWithoutIDs(x []float32, k int64, exclude []int64, params json.RawMessage) (distances []float32,
+		labels []int64, err error)
+
+	SearchWithIDs(x []float32, k int64, include []int64, params json.RawMessage) (distances []float32,
 		labels []int64, err error)
 
 	Reconstruct(key int64) ([]float32, error)
@@ -182,6 +186,44 @@ func (idx *faissIndex) SearchWithoutIDs(x []float32, k int64, exclude []int64, p
 
 	distances, labels, err = idx.searchWithParams(x, k, searchParams.sp)
 
+	return
+}
+
+func (idx *faissIndex) SearchWithIDs(x []float32, k int64, include []int64,
+	params json.RawMessage) (distances []float32, labels []int64, err error,
+) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	includeSelector, err := NewIDSelectorBatch(include)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var sp *C.FaissSearchParameters
+	C.faiss_SearchParameters_new(&sp, (*C.FaissIDSelector)(includeSelector.sel))
+	ivfPtr := C.faiss_IndexIVF_cast(idx.cPtr())
+	if ivfPtr != nil {
+		sp = C.faiss_SearchParametersIVF_cast(sp)
+		C.faiss_SearchParametersIVF_new_with_sel(&sp, (*C.FaissIDSelector)(includeSelector.sel))
+	}
+
+	n := len(x) / idx.D()
+	distances = make([]float32, int64(n)*k)
+	labels = make([]int64, int64(n)*k)
+
+	if c := C.faiss_Index_search_with_params(
+		idx.idx,
+		C.idx_t(n),
+		(*C.float)(&x[0]),
+		C.idx_t(k), sp,
+		(*C.float)(&distances[0]),
+		(*C.idx_t)(&labels[0]),
+	); c != 0 {
+		err = getLastError()
+	}
+	// excludeSelector.Delete()
+	C.faiss_SearchParameters_free(sp)
 	return
 }
 
