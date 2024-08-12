@@ -50,9 +50,6 @@ type Index interface {
 	// corresponding distances.
 	Search(x []float32, k int64) (distances []float32, labels []int64, err error)
 
-	SearchWithoutIDs(x []float32, k int64, exclude []int64, params json.RawMessage) (distances []float32,
-		labels []int64, err error)
-
 	SearchWithIDs(x []float32, k int64, include []int64, params json.RawMessage) (distances []float32,
 		labels []int64, err error)
 
@@ -157,34 +154,6 @@ func (idx *faissIndex) Search(x []float32, k int64) (
 	); c != 0 {
 		err = getLastError()
 	}
-
-	return
-}
-
-func (idx *faissIndex) SearchWithoutIDs(x []float32, k int64, exclude []int64, params json.RawMessage) (
-	distances []float32, labels []int64, err error,
-) {
-	if params == nil && len(exclude) == 0 {
-		return idx.Search(x, k)
-	}
-
-	var selector *C.FaissIDSelector
-	if len(exclude) > 0 {
-		excludeSelector, err := NewIDSelectorNot(exclude)
-		if err != nil {
-			return nil, nil, err
-		}
-		selector = excludeSelector.sel
-		defer excludeSelector.Delete()
-	}
-
-	searchParams, err := NewSearchParams(idx, params, selector)
-	defer searchParams.Delete()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	distances, labels, err = idx.searchWithParams(x, k, searchParams.sp)
 
 	return
 }
