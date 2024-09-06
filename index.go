@@ -44,6 +44,13 @@ type Index interface {
 	// AddWithIDs is like Add, but stores xids instead of sequential IDs.
 	AddWithIDs(x []float32, xids []int64) error
 
+	// Return a map of centroid ID --> []vector IDs for the cluster.
+	GetClusterAssignment() (ids map[int64][]int64, err error)
+
+	// Returns the centroid IDs closest to the query 'x' and their distance from 'x'
+	GetCentroidDistances(x []float32, centroidIDs []int64) (
+		[]int64, []float32, error)
+
 	// Search queries the index with the vectors in x.
 	// Returns the IDs of the k nearest neighbors for each query vector and the
 	// corresponding distances.
@@ -54,6 +61,9 @@ type Index interface {
 
 	SearchWithIDs(x []float32, k int64, include []int64, params json.RawMessage) (distances []float32,
 		labels []int64, err error)
+
+	SearchSpecifiedClusters(include, centroidIDs []int64, k int64, x,
+		centroidDis []float32, params json.RawMessage) ([]float32, []int64, error)
 
 	Reconstruct(key int64) ([]float32, error)
 
@@ -126,6 +136,56 @@ func (idx *faissIndex) Add(x []float32) error {
 	return nil
 }
 
+func (idx *faissIndex) GetClusterAssignment() (map[int64][]int64, error) {
+
+	clusterVectorIDMap := make(map[int64][]int64)
+
+	ivfPtr := C.faiss_IndexIVF_cast(idx.cPtr())
+	if ivfPtr == nil {
+		return clusterVectorIDMap, nil
+	}
+
+	nlist := C.faiss_IndexIVF_nlist(idx.idx)
+	for i := 0; i < int(nlist); i++ {
+		list_size := C.faiss_IndexIVF_get_list_size(idx.idx, C.size_t(i))
+		invlist := make([]int64, list_size)
+		C.faiss_IndexIVF_invlists_get_ids(idx.idx, C.size_t(i), (*C.idx_t)(&invlist[0]))
+		clusterVectorIDMap[int64(i)] = invlist
+	}
+
+	return clusterVectorIDMap, nil
+}
+
+func (idx *faissIndex) SearchSpecifiedClusters(include, centroidIDs []int64, k int64, x,
+	centroidDis []float32, params json.RawMessage) ([]float32, []int64, error) {
+	includeSelector, err := NewIDSelectorBatch(include)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer includeSelector.Delete()
+
+	// Have to override nprobe in the search params to len(centroidIDs) so that more than
+	// nprobe clusters will be searched if necessary.
+	searchParams, err := NewSearchParams(idx, params, includeSelector.sel,
+		len(centroidIDs))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	n := len(x) / idx.D()
+
+	distances := make([]float32, int64(n)*k)
+	labels := make([]int64, int64(n)*k)
+
+	if c := C.faiss_IndexIVF_search_preassigned_with_params(idx.idx, (C.idx_t)(n),
+		(*C.float)(&x[0]), (C.idx_t)(k), (*C.idx_t)(&centroidIDs[0]), (*C.float)(&centroidDis[0]),
+		(*C.float)(&distances[0]), (*C.idx_t)(&labels[0]), (C.int)(0), searchParams.sp); c != 0 {
+		return nil, nil, getLastError()
+	}
+
+	return distances, labels, nil
+}
+
 func (idx *faissIndex) AddWithIDs(x []float32, xids []int64) error {
 	n := len(x) / idx.D()
 	if c := C.faiss_Index_add_with_ids(
@@ -160,9 +220,8 @@ func (idx *faissIndex) Search(x []float32, k int64) (
 	return
 }
 
-func (idx *faissIndex) SearchWithoutIDs(x []float32, k int64, exclude []int64, params json.RawMessage) (
-	distances []float32, labels []int64, err error,
-) {
+func (idx *faissIndex) SearchWithoutIDs(x []float32, k int64, exclude []int64,
+	params json.RawMessage) (distances []float32, labels []int64, err error) {
 	if params == nil && len(exclude) == 0 {
 		return idx.Search(x, k)
 	}
@@ -177,7 +236,7 @@ func (idx *faissIndex) SearchWithoutIDs(x []float32, k int64, exclude []int64, p
 		defer excludeSelector.Delete()
 	}
 
-	searchParams, err := NewSearchParams(idx, params, selector)
+	searchParams, err := NewSearchParams(idx, params, selector, 0)
 	defer searchParams.Delete()
 	if err != nil {
 		return nil, nil, err
@@ -186,6 +245,33 @@ func (idx *faissIndex) SearchWithoutIDs(x []float32, k int64, exclude []int64, p
 	distances, labels, err = idx.searchWithParams(x, k, searchParams.sp)
 
 	return
+}
+
+func (idx *faissIndex) GetCentroidDistances(x []float32, centroidIDs []int64) (
+	[]int64, []float32, error) {
+	includeSelector2, err := NewIDSelectorBatch(centroidIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer includeSelector2.Delete()
+
+	searchParams2, err := NewSearchParams(idx, json.RawMessage{},
+		includeSelector2.sel, len(centroidIDs))
+	if err != nil {
+		return nil, nil, err
+	}
+	defer searchParams2.Delete()
+
+	centroid_ids := make([]int64, len(centroidIDs))
+	centroid_distances := make([]float32, len(centroidIDs))
+
+	c := C.faiss_Search_closest_eligible_centroids(idx.idx, (*C.float)(&x[0]), (C.int)(len(centroidIDs)),
+		searchParams2.sp, (*C.float)(&centroid_distances[0]), (*C.idx_t)(&centroid_ids[0]))
+	if c != 0 {
+		return nil, nil, getLastError()
+	}
+
+	return centroidIDs, centroid_distances, nil
 }
 
 func (idx *faissIndex) SearchWithIDs(x []float32, k int64, include []int64,
@@ -197,7 +283,7 @@ func (idx *faissIndex) SearchWithIDs(x []float32, k int64, include []int64,
 	}
 	defer includeSelector.Delete()
 
-	searchParams, err := NewSearchParams(idx, params, includeSelector.sel)
+	searchParams, err := NewSearchParams(idx, params, includeSelector.sel, 0)
 	if err != nil {
 		return nil, nil, err
 	}
